@@ -4,63 +4,117 @@
 # Supports Blog V4 / R828D RTL-SDR
 # ==============================================
 
-set -e  # Exit on error
+set -e
 set -o pipefail
 
-echo "=== 1. Unhold any packages we need ==="
-echo "(in the event you run this multiple times)"
-sudo apt-mark unhold rtl-sdr librtlsdr0 librtlsdr-dev
+JOBS=$(nproc)
 
-echo "=== 2. Remove old RTL-SDR packages and files ==="
-sudo apt purge -y ^librtlsdr
-sudo rm -rvf /usr/lib/librtlsdr* \
-            /usr/include/rtl-sdr* \
-            /usr/local/lib/librtlsdr* \
-            /usr/local/include/rtl-sdr* \
-            /usr/local/include/rtl_* \
-            /usr/local/bin/rtl_*
+echo "=== 0. Sanity checks ==="
+if [[ $EUID -eq 0 ]]; then
+    echo "Do NOT run this script as root."
+    exit 1
+fi
 
-echo "=== 3. Install build dependencies ==="
-sudo apt-get update
-sudo apt-get install -y libusb-1.0-0-dev git cmake pkg-config build-essential \
-                        cmake gnuradio-dev gr-osmosdr qt6-base-dev qt6-svg-dev qt6-wayland \
-                        libasound2-dev libjack-jackd2-dev portaudio19-dev libpulse-dev
+echo "=== 1. Install build dependencies (idempotent) ==="
+sudo apt update
+sudo apt install -y \
+    git cmake pkg-config build-essential \
+    libusb-1.0-0-dev \
+    gnuradio-dev gr-osmosdr \
+    qt6-base-dev qt6-svg-dev qt6-wayland \
+    libasound2-dev libjack-jackd2-dev \
+    portaudio19-dev libpulse-dev
 
-echo "=== 4. Build and install rtl-sdr from source ==="
-cd ~
-git clone https://github.com/osmocom/rtl-sdr
-cd rtl-sdr
-mkdir -p build && cd build
-cmake ../ -DINSTALL_UDEV_RULES=ON
-make -j$(nproc)
+echo "=== 2. Blacklist DVB driver (safe overwrite) ==="
+sudo tee /etc/modprobe.d/rtl-sdr-blacklist.conf >/dev/null <<'EOF'
+blacklist dvb_usb_rtl28xxu
+EOF
+
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+BUILDROOT="$HOME/sdr-build"
+mkdir -p "$BUILDROOT"
+
+# -----------------------------------------------------
+# RTL-SDR
+# -----------------------------------------------------
+echo "=== 3. Build rtl-sdr from source ==="
+cd "$BUILDROOT"
+
+if [[ -d rtl-sdr ]]; then
+    echo "Updating existing rtl-sdr source..."
+    cd rtl-sdr
+    git pull
+else
+    git clone https://github.com/osmocom/rtl-sdr
+    cd rtl-sdr
+fi
+
+rm -rf build
+mkdir build && cd build
+cmake .. -DINSTALL_UDEV_RULES=ON
+make -j"$JOBS"
 sudo make install
-sudo cp ../rtl-sdr.rules /etc/udev/rules.d/
 sudo ldconfig
 
-echo "=== 5. Blacklist the DVB kernel driver ==="
-echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-dvb_usb_rtl28xxu.conf
+# Install udev rules safely
+if [[ -f ../rtl-sdr.rules ]]; then
+    sudo install -m 644 ../rtl-sdr.rules /etc/udev/rules.d/
+fi
 
-echo "=== 6. Hold rtl-sdr packages to prevent overwrite ==="
-sudo apt-mark hold rtl-sdr librtlsdr0 librtlsdr-dev
+sudo udevadm control --reload-rules
+sudo udevadm trigger
 
-echo "=== 7. Build and install gr-osmosdr ==="
-cd ~
-git clone https://gitea.osmocom.org/sdr/gr-osmosdr
-cd gr-osmosdr
-mkdir -p build && cd build
-cmake ../
-make -j$(nproc)
-sudo make install
-sudo ldconfig
+# -----------------------------------------------------
+# gr-osmosdr
+# -----------------------------------------------------
+echo "=== 4. Build gr-osmosdr from source ==="
+cd "$BUILDROOT"
 
-echo "=== 8. Build and install GQRX ==="
-cd ~
-git clone https://github.com/gqrx-sdr/gqrx.git
-cd gqrx
-mkdir -p build && cd build
+if [[ -d gr-osmosdr ]]; then
+    echo "Updating existing gr-osmosdr source..."
+    cd gr-osmosdr
+    git pull
+else
+    git clone https://gitea.osmocom.org/sdr/gr-osmosdr
+    cd gr-osmosdr
+fi
+
+rm -rf build
+mkdir build && cd build
 cmake ..
-make -j$(nproc)
+make -j"$JOBS"
+sudo make install
+sudo ldconfig
+
+# -----------------------------------------------------
+# GQRX
+# -----------------------------------------------------
+echo "=== 5. Build GQRX ==="
+cd "$BUILDROOT"
+
+if [[ -d gqrx ]]; then
+    echo "Updating existing GQRX source..."
+    cd gqrx
+    git pull
+else
+    git clone https://github.com/gqrx-sdr/gqrx.git
+    cd gqrx
+fi
+
+rm -rf build
+mkdir build && cd build
+cmake ..
+make -j"$JOBS"
 sudo make install
 
-echo "=== DONE: GQRX + RTL-SDR built successfully! ==="
-echo "Reboot your Pi or unplug/replug your RTL-SDR dongle before running GQRX."
+echo "=== 6. Verification ==="
+echo "Testing rtl-sdr device detection..."
+rtl_test || true
+
+echo
+echo "======================================"
+echo " GQRX + RTL-SDR build complete!"
+echo " You may need to log out or reboot."
+echo "======================================"
