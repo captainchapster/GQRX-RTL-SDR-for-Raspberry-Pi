@@ -74,7 +74,9 @@ fi
 
 rm -rf build
 mkdir build && cd build
-cmake ..
+cmake .. \
+  -DENABLE_BLADERF=OFF \
+  -DCMAKE_BUILD_TYPE=Release
 make -j"$JOBS"
 sudo make install
 sudo ldconfig
