@@ -14,7 +14,8 @@ echo "=== 1. Unhold any held RTL-SDR packages ==="
 sudo apt-mark unhold rtl-sdr librtlsdr0 librtlsdr-dev || true
 
 echo "=== 2. Purge old RTL-SDR packages ==="
-sudo apt purge -y rtl-sdr librtlsdr0 librtlsdr-dev || true
+sudo apt purge -y rtl-sdr librtlsdr0 librtlsdr-dev \
+    gr-osmosdr libgnuradio-osmosdr* || true
 
 echo "=== 3. Remove old source-installed libraries ==="
 sudo rm -rf /usr/local/lib/librtlsdr* /usr/local/bin/rtl_* /usr/local/include/rtl-sdr* /usr/local/include/rtl_*
@@ -24,7 +25,7 @@ echo "=== 4. Install build dependencies ==="
 sudo apt update
 sudo apt install -y \
     libusb-1.0-0-dev git cmake pkg-config build-essential \
-    gnuradio-dev gr-osmosdr \
+    gnuradio-dev \
     qt6-base-dev qt6-svg-dev qt6-wayland \
     libasound2-dev libjack-jackd2-dev portaudio19-dev libpulse-dev
 
@@ -99,8 +100,9 @@ sudo make install
 # -----------------------------------------------------
 # Test
 # -----------------------------------------------------
-echo "=== 9. Testing RTL-SDR configuration ==="
+echo "=== 9. Testing configuration ==="
 rtl_test -t
+ldd $(which gqrx) | grep rtl
 
 echo "=== DONE: GQRX + RTL-SDR built successfully! ==="
 echo "Reboot your Pi or unplug/replug your RTL-SDR dongle before running GQRX."
