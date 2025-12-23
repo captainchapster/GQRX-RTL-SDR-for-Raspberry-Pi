@@ -18,8 +18,11 @@ Provided installation is done in this order, with these commands, GQRX + V4 RTL-
 
 ```BASH
 cd ~
+sudo rm -rf GQRX-RTL-SDR-for-Raspberry-Pi
 git clone https://github.com/captainchapster/GQRX-RTL-SDR-for-Raspberry-Pi.git
 cd GQRX-RTL-SDR-for-Raspberry-Pi
 sudo chmod +x install.sh
 ./install.sh
 ```
+
+This will produce an sdr-build directory in ~ at which point GQRX-RTL-SDR-for-Raspberry-Pi can be removed if you desire.
