@@ -26,3 +26,7 @@ sudo chmod +x install.sh
 ```
 
 This will produce an sdr-build directory in ~ at which point GQRX-RTL-SDR-for-Raspberry-Pi can be removed if you desire.
+
+Happy signal hunting!
+
+73 de VK2WEG.
