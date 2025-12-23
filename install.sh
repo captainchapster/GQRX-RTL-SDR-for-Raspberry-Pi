@@ -16,6 +16,7 @@ sudo apt-mark unhold rtl-sdr librtlsdr0 librtlsdr-dev || true
 echo "=== 2. Purge old RTL-SDR packages ==="
 sudo apt purge -y rtl-sdr librtlsdr0 librtlsdr-dev \
     gr-osmosdr libgnuradio-osmosdr* || true
+sudo apt autoremove -y
 
 echo "=== 3. Remove old source-installed libraries ==="
 sudo rm -rf /usr/local/lib/librtlsdr* /usr/local/bin/rtl_* /usr/local/include/rtl-sdr* /usr/local/include/rtl_*
