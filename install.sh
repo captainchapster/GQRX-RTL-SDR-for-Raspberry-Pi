@@ -10,35 +10,10 @@ set -o pipefail
 JOBS=$(nproc)
 BUILDROOT="$HOME/sdr-build"
 
-echo "=== 1. Unhold any held RTL-SDR packages ==="
-sudo apt-mark unhold rtl-sdr librtlsdr0 librtlsdr-dev || true
-
-echo "=== 2. Purge old RTL-SDR packages ==="
-sudo apt purge -y rtl-sdr librtlsdr0 librtlsdr-dev \
-    gr-osmosdr libgnuradio-osmosdr* || true
-sudo apt autoremove -y
-
-echo "=== 3. Remove old source-installed libraries ==="
-sudo rm -rf /usr/local/lib/librtlsdr* /usr/local/bin/rtl_* /usr/local/include/rtl-sdr* /usr/local/include/rtl_*
-sudo ldconfig
-
-echo "=== 4. Install build dependencies ==="
-sudo apt update
-sudo apt install -y \
-    libusb-1.0-0-dev git cmake pkg-config build-essential \
-    gnuradio-dev \
-    qt6-base-dev qt6-svg-dev qt6-wayland \
-    libasound2-dev libjack-jackd2-dev portaudio19-dev libpulse-dev
-
-echo "=== 5. Blacklist DVB driver ==="
-echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-dvb_usb_rtl28xxu.conf
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-
 # -----------------------------------------------------
 # RTL-SDR
 # -----------------------------------------------------
-echo "=== 6. Build RTL-SDR from source ==="
+echo "=== 1. Build RTL-SDR from source ==="
 mkdir -p "$BUILDROOT"
 cd "$BUILDROOT"
 if [[ -d rtl-sdr ]]; then
@@ -62,7 +37,7 @@ sudo udevadm trigger
 # -----------------------------------------------------
 # gr-osmosdr
 # -----------------------------------------------------
-echo "=== 7. Build gr-osmosdr from source ==="
+echo "=== 2. Build gr-osmosdr from source ==="
 cd "$BUILDROOT"
 if [[ -d gr-osmosdr ]]; then
     cd gr-osmosdr
@@ -84,7 +59,7 @@ sudo ldconfig
 # -----------------------------------------------------
 # GQRX
 # -----------------------------------------------------
-echo "=== 8. Build GQRX ==="
+echo "=== 3. Build GQRX ==="
 cd "$BUILDROOT"
 if [[ -d gqrx ]]; then
     cd gqrx
@@ -101,9 +76,37 @@ make -j"$JOBS"
 sudo make install
 
 # -----------------------------------------------------
+# Purge the previous driver
+# -----------------------------------------------------
+echo "=== 4. Purge the previous driver ==="
+sudo apt purge ^librtlsdr
+sudo rm -rvf /usr/lib/librtlsdr* /usr/include/rtl-sdr* /usr/local/lib/librtlsdr* /usr/local/include/rtl-sdr* /usr/local/include/rtl_* /usr/local/bin/rtl_*
+
+# -----------------------------------------------------
+# Install the latest drivers
+# -----------------------------------------------------
+echo "=== 5. Install the latest drivers ==="
+sudo apt-get install libusb-1.0-0-dev git cmake pkg-config build-essential
+git clone https://github.com/osmocom/rtl-sdr
+cd rtl-sdr
+mkdir build
+cd build
+cmake ../ -DINSTALL_UDEV_RULES=ON
+make
+sudo make install
+sudo cp ../rtl-sdr.rules /etc/udev/rules.d/
+sudo ldconfig
+
+# -----------------------------------------------------
+# Blacklist the DVB-T TV drivers
+# -----------------------------------------------------
+echo "=== 6. Blacklist the DVB-T TV drivers ==="
+echo 'blacklist dvb_usb_rtl28xxu' | sudo tee --append /etc/modprobe.d/blacklist-dvb_usb_rtl28xxu.conf
+
+# -----------------------------------------------------
 # Test
 # -----------------------------------------------------
-echo "=== 9. Testing configuration ==="
+echo "=== 7. Testing configuration ==="
 rtl_test -t
 ldd $(which gqrx) | grep rtl
 
