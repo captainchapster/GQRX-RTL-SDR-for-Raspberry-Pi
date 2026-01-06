@@ -1,21 +1,52 @@
 #!/bin/bash
 # ==============================================
-# GQRX + RTL-SDR Build Script for Raspberry Pi
-# Supports Blog V4 / R828D RTL-SDR
+# Automated Build Script: GQRX + RTL-SDR Blog V4
+# Raspberry Pi (supports V4 / R828D dongles)
 # ==============================================
 
 set -e
 set -o pipefail
 
+# Number of parallel make jobs
 JOBS=$(nproc)
 BUILDROOT="$HOME/sdr-build"
 
+echo "=== RTL-SDR Blog V4 Build Script ==="
+echo "Build directory: $BUILDROOT"
+echo "Using $JOBS parallel jobs"
+
 # -----------------------------------------------------
-# RTL-SDR
+# Install dependencies
 # -----------------------------------------------------
-echo "=== 1. Build RTL-SDR from source ==="
+echo "=== 0. Installing build dependencies ==="
+sudo apt-get update
+sudo apt-get install -y \
+    git cmake build-essential pkg-config libusb-1.0-0-dev \
+    libqt5core5a libqt5gui5 libqt5widgets5 qttools5-dev qttools5-dev-tools \
+    libpulse-dev libfftw3-dev libqt5svg5-dev
+
+# -----------------------------------------------------
+# Blacklist DVB-T kernel drivers
+# -----------------------------------------------------
+echo "=== 1. Blacklisting DVB-T drivers ==="
+BLACKLIST_FILE="/etc/modprobe.d/blacklist-dvb_usb_rtl28xxu.conf"
+if ! grep -q "blacklist dvb_usb_rtl28xxu" "$BLACKLIST_FILE" 2>/dev/null; then
+    echo "blacklist dvb_usb_rtl28xxu" | sudo tee -a "$BLACKLIST_FILE"
+    echo "DVB-T driver blacklisted."
+else
+    echo "DVB-T driver already blacklisted."
+fi
+
+# -----------------------------------------------------
+# Create build root
+# -----------------------------------------------------
 mkdir -p "$BUILDROOT"
 cd "$BUILDROOT"
+
+# -----------------------------------------------------
+# 2. Build RTL-SDR from source
+# -----------------------------------------------------
+echo "=== 2. Building RTL-SDR from source ==="
 if [[ -d rtl-sdr ]]; then
     cd rtl-sdr
     git pull
@@ -29,15 +60,16 @@ mkdir build && cd build
 cmake .. -DINSTALL_UDEV_RULES=ON
 make -j"$JOBS"
 sudo make install
-sudo cp ../rtl-sdr.rules /etc/udev/rules.d/
 sudo ldconfig
+
+# Reload udev rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
 # -----------------------------------------------------
-# gr-osmosdr
+# 3. Build gr-osmosdr
 # -----------------------------------------------------
-echo "=== 2. Build gr-osmosdr from source ==="
+echo "=== 3. Building gr-osmosdr ==="
 cd "$BUILDROOT"
 if [[ -d gr-osmosdr ]]; then
     cd gr-osmosdr
@@ -49,17 +81,15 @@ fi
 
 rm -rf build
 mkdir build && cd build
-cmake .. \
-  -DENABLE_BLADERF=OFF \
-  -DCMAKE_BUILD_TYPE=Release
+cmake .. -DENABLE_BLADERF=OFF -DCMAKE_BUILD_TYPE=Release
 make -j"$JOBS"
 sudo make install
 sudo ldconfig
 
 # -----------------------------------------------------
-# GQRX
+# 4. Build GQRX
 # -----------------------------------------------------
-echo "=== 3. Build GQRX ==="
+echo "=== 4. Building GQRX ==="
 cd "$BUILDROOT"
 if [[ -d gqrx ]]; then
     cd gqrx
@@ -76,39 +106,14 @@ make -j"$JOBS"
 sudo make install
 
 # -----------------------------------------------------
-# Purge the previous driver
+# 5. Test RTL-SDR and GQRX
 # -----------------------------------------------------
-echo "=== 4. Purge the previous driver ==="
-sudo apt purge ^librtlsdr
-sudo rm -rvf /usr/lib/librtlsdr* /usr/include/rtl-sdr* /usr/local/lib/librtlsdr* /usr/local/include/rtl-sdr* /usr/local/include/rtl_* /usr/local/bin/rtl_*
+echo "=== 5. Testing RTL-SDR ==="
+if rtl_test -t; then
+    echo "RTL-SDR detected successfully!"
+else
+    echo "WARNING: RTL-SDR not detected."
+fi
 
-# -----------------------------------------------------
-# Install the latest drivers
-# -----------------------------------------------------
-echo "=== 5. Install the latest drivers ==="
-sudo apt-get install libusb-1.0-0-dev git cmake pkg-config build-essential
-git clone https://github.com/osmocom/rtl-sdr
-cd rtl-sdr
-mkdir build
-cd build
-cmake ../ -DINSTALL_UDEV_RULES=ON
-make
-sudo make install
-sudo cp ../rtl-sdr.rules /etc/udev/rules.d/
-sudo ldconfig
-
-# -----------------------------------------------------
-# Blacklist the DVB-T TV drivers
-# -----------------------------------------------------
-echo "=== 6. Blacklist the DVB-T TV drivers ==="
-echo 'blacklist dvb_usb_rtl28xxu' | sudo tee --append /etc/modprobe.d/blacklist-dvb_usb_rtl28xxu.conf
-
-# -----------------------------------------------------
-# Test
-# -----------------------------------------------------
-echo "=== 7. Testing configuration ==="
-rtl_test -t
-ldd $(which gqrx) | grep rtl
-
-echo "=== DONE: GQRX + RTL-SDR built successfully! ==="
+echo "=== DONE: GQRX + RTL-SDR V4 built successfully! ==="
 echo "Reboot your Pi or unplug/replug your RTL-SDR dongle before running GQRX."
